@@ -24,7 +24,7 @@ loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[TRAJ]AX
 # load low-level drivers
 #loadrt hal_bb_gpio output_pins=107,126,217,218,224,226 input_pins=108,110,114,117,118
 #loadrt hal_bb_gpio output_pins=107,126,211,212,218,224,226 input_pins=108,109,110,114,117,118,218,222
-loadrt hal_bb_gpio output_pins=117,211,212,218,224,226 input_pins=118,107,108,109,110,114,119,126,213,216,217,222,241,242,225,231
+loadrt hal_bb_gpio output_pins=117,211,212,218,224,226,242 input_pins=118,107,108,109,110,114,119,126,213,216,217,222,241,225,231
 loadrt [PRUCONF](DRIVER) prucode=$(HAL_RTMOD_DIR)/[PRUCONF](PRUBIN) [PRUCONF](CONFIG)
 loadrt pid num_chan=2
 loadrt limit1 count=3
@@ -344,9 +344,9 @@ setp bb_gpio.p9.in-16.invert 1
 
 
 # A Axis Index
-net Aindex <= bb_gpio.p9.in-42
-net Aindex => axis.3.index-enable
-setp bb_gpio.p9.in-42.
+#net Aindex <=> axis.3.index-enable
+net Aindex bb_gpio.p9.out-42 <=> axis.3.index-enable
+#setp bb_gpio.p9.in-42.
 
 
 # B axis
