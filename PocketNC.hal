@@ -3,12 +3,10 @@
 # HAL file for BeagleBone PocketNC cape with 5 steppers
 # 
 # Derived from example hm2-stepper config
-# test Michelle
 # ########################################
 
 # Launch the setup script to make sure hardware setup looks good
 loadusr -w ./setup.bridge.sh
-
 
 # ###################################
 # Core EMC/HAL Loads
@@ -16,16 +14,15 @@ loadusr -w ./setup.bridge.sh
 
 # kinematics
 loadrt trivkins
+loadrt tp
 
 # motion controller, get name and thread periods from ini file
-loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[TRAJ]AXES
+loadrt [EMCMOT]EMCMOT servo_period_nsec=[EMCMOT]SERVO_PERIOD num_joints=[TRAJ]AXES tp=tp kins=trivkins
 
 
 # load low-level drivers
-#loadrt hal_bb_gpio output_pins=107,126,217,218,224,226 input_pins=108,110,114,117,118
-#loadrt hal_bb_gpio output_pins=107,126,211,212,218,224,226 input_pins=108,109,110,114,117,118,218,222
-loadrt hal_bb_gpio output_pins=117,211,212,218,224,226,242 input_pins=118,107,108,109,110,114,119,126,213,216,217,222,241,225,231
-loadrt [PRUCONF](DRIVER) prucode=$(HAL_RTMOD_DIR)/[PRUCONF](PRUBIN) [PRUCONF](CONFIG)
+loadrt hal_bb_gpio output_pins=117,211,212,218,224,226 input_pins=118,108,109,110,114,119,126,213,216,217,222,241,242,225,231
+loadrt [PRUCONF](DRIVER) prucode=/usr/lib/linuxcnc/xenomai/pru_generic.bin  [PRUCONF](CONFIG)
 loadrt pid num_chan=2
 loadrt limit1 count=3
 
@@ -33,16 +30,17 @@ loadrt limit1 count=3
 loadrt scale names=spindleScale
 
 # Some 'glue' logic
-#loadrt toggle names=pwrToggle,eStpToggle
-#loadrt not names=pwrNot,eStpNot
 loadrt sum2 names=spindleMath
 loadrt toggle count=8
 loadrt not count=8
+loadrt and2 count=2
+loadrt or2 count=1
+loadrt toggle2nist count=1
 
 # Python user-mode HAL module to read ADC value and generate a thermostat output for PWM
 # t = Thermistor table (only epcos_B57560G1104 or 1 supported for now)
 # a = analog input channel
-loadusr -Wn Therm /home/machinekit/machinekit-dev/configs/ARM/BeagleBone/BeBoPr-Bridge/ReadTemp.py -n Therm --num_chan 2 -t 1 1 -a 4 5
+loadusr -Wn Therm /home/machinekit/linuxcnc/configs/ARM.BeagleBone.PocketNC/ReadTemp.py -n Therm --num_chan 2 -t 1 1 -a 4 5
 
 # ################################################
 # THREADS
@@ -65,14 +63,35 @@ addf spindleScale						servo-thread
 #addf pwrNot							servo-thread
 #addf eStpToggle						servo-thread
 #addf eStpNot							servo-thread
+
+## Add a functions for E-stop button
 addf toggle.0							servo-thread
+
+## Add a functions for Machine power button
 addf toggle.1							servo-thread
+
+## Add a functions for Start/Run button
 addf toggle.2							servo-thread
+
+## Add a functions for Pause button
 addf toggle.3							servo-thread
+addf and2.0							servo-thread
+addf and2.1							servo-thread
+addf or2.0							servo-thread
+addf toggle2nist.0						servo-thread
+
+## Add a functions for (un-declared) button
 addf toggle.4							servo-thread
+
+## Add a functions for (un-declared) button
 addf toggle.5							servo-thread
+
+## Add a functions for (un-declared) button
 addf toggle.6							servo-thread
+
+## Add a functions for (un-declared) button
 addf toggle.7							servo-thread
+
 addf not.0							servo-thread
 addf not.1							servo-thread
 addf not.2							servo-thread
@@ -344,8 +363,8 @@ setp bb_gpio.p9.in-16.invert 1
 
 
 # A Axis Index
-#net Aindex <=> axis.3.index-enable
-net Aindex bb_gpio.p9.out-42 <=> axis.3.index-enable
+#net Aindex <= bb_gpio.p9.in-42
+#net Aindex => axis.3.index-enable
 #setp bb_gpio.p9.in-42.
 
 
@@ -359,7 +378,6 @@ setp bb_gpio.p8.in-19.invert 1
 net estop-loop iocontrol.0.user-enable-out => iocontrol.0.emc-enable-in
 #net eStopToggle toggle.0.in <= bb_gpio.p8.in-07
 setp toggle.0.debounce 2
-#setp bb_gpio.p8.in-07.invert 1
 net eStopOn toggle.0.out => halui.estop.activate => not.0.in
 net eStopOff not.0.out => halui.estop.reset
 net eStopDriversEnable halui.estop.is-activated => bb_gpio.p9.out-26
@@ -370,10 +388,6 @@ setp toggle.1.debounce 2
 setp bb_gpio.p8.in-26.invert 0
 net powerOn toggle.1.out => halui.machine.on => not.1.in
 net powerOff not.1.out => halui.machine.off
-
-
-#net driversEnable halui.machine.is-on => not.2.in
-#net driversEnableInvert not.2.out => bb_gpio.p9.out-26
 net driversEnable halui.machine.is-on => bb_gpio.p9.out-12
 
 
@@ -392,14 +406,21 @@ net progStart halui.program.run <= bb_gpio.p9.in-22
 #net powerOff not.1.out => halui.machine.off
 
 # Program pause
-net progPause halui.program.pause <= bb_gpio.p9.in-17
-#setp toggle.1.debounce 2
-#setp bb_gpio.p9.in-17.invert 0
-#net powerOn toggle.1.out => halui.machine.on => not.1.in
-#net powerOff not.1.out => halui.machine.off
+#net progPause halui.program.pause <= bb_gpio.p9.in-17
+
+net pause-resume-btn and2.0.in0 and2.1.in0 <= bb_gpio.p9.in-17
+net pause-on toggle2nist.0.is-on and2.0.in1 <= halui.program.is-paused
+net run-on and2.1.in1 <= halui.program.is-running
+net pause-sig or2.0.in0 <= and2.0.out
+net resume-sig or2.0.in1 <= and2.1.out
+net toggle-ok toggle.3.in <= or2.0.out
+net togglesig toggle2nist.0.in <= toggle.3.out
+net toggleon halui.program.pause <= toggle2nist.0.on
+net toggleoff halui.program.resume <= toggle2nist.0.off
+
 
 # Program stop
-net programStop halui.program.stop <= bb_gpio.p9.in-41
+#net programStop halui.program.stop <= bb_gpio.p9.in-41
 #setp toggle.1.debounce 2
 #setp bb_gpio.p8.in-26.invert 0
 #net powerOn toggle.1.out => halui.machine.on => not.1.in
